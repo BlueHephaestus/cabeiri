@@ -8,6 +8,8 @@ The most recent one is the signal bot, which is empowered with GPT4 and can resp
 
 More details can be found in each subdirectory!
 
+Example of Signal bot: ![Signal bot](signal/example.png)
+
 ### Origin of "Cabeiri"
 My name is Blue Hephaestus. These bots are called "Cabeiri" and are inspired by the messengers and assistant automatons that the god Hephaestus would create in Greek Mythology. Specifically, he once made automaton horses (of varying number) for his sons, the two gods Cabeiri, to assist them. 
 
