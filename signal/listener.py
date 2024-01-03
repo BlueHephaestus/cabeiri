@@ -17,6 +17,7 @@ KEEP RESPONSES SHORT! DO ONE SENTENCE ONLY.
 If asked for your name, tell them your name is Blue Hephaestus. Good luck, and have fun!
 """
 SYSTEM_NUMBER = "+18647109821"
+DEBUG = False
 
 class TripletStore:
     def __init__(self):
@@ -82,6 +83,8 @@ class MessageFetcher:
             return None
 
     def parse_messages(self, data):
+        READ_TEMPLATE = ["envelope", "receiptMessage","isRead"]
+
         messages = []
         for item in data:
             envelope = item.get('envelope', {})
@@ -95,8 +98,99 @@ class MessageFetcher:
             human_readable_timestamp = datetime.fromtimestamp(timestamp / 1000).strftime('%b %d, %I:%M%p')
             message_text = envelope.get('dataMessage', {}).get('message', '')
 
-            messages.append(Message(source_name, message_text, human_readable_timestamp, group_name))
+            messages.append(Message(source_name, message_text, human_readable_timestamp, group_name, item))
         return messages
+
+    """
+    a 
+        b: c
+        d: 
+            e: f
+            g: h
+        i: j
+    
+    """
+
+    def items_recursive(self, dic):
+        for key, val in dic.items():
+            if type(val) is dict:
+                for ikey, ival in self.items_recursive(val):
+                    yield ikey, ival
+            else:
+                yield key, val
+
+    def flatten_dict(self, dic):
+        # return 1-d dict from multidimensional dict
+        return {k:v for k,v in self.items_recursive(dic)}
+
+    def parse(self, data):
+        """
+        Parse data into message, with variety of formats for data.
+        Flattens dictionary and gets whatever attributes are possible, to keep things simple.
+        """
+        data = self.flatten_dict(data)
+
+        # Get unified attributes
+        timestamp = datetime.fromtimestamp(data.get("timestamp",0) / 1000).strftime('%b %d, %I:%M%p')
+        group = ""
+        user = data.get("sourceName", "?")
+        msg = ""
+
+
+        # Check for flag messages
+        # Store in group since these messages don't have a group ID so we just use it as indicator.
+        if data.get("isDelivery",False):
+            # Message delivered notification
+            group = "$delivered"
+
+        elif data.get("isRead", False) or data.get("readMessages", False):
+            # Message read notification (the second type is our own read message)
+            group = "$read"
+
+        elif data.get("isViewed", False):
+            # Message viewed notification
+            group = "$viewed"
+
+        elif data.get("action", False):
+            # Message typing notification
+            group = "$typing"
+
+        elif data.get("message", False) is None:
+            # react or delete
+
+            # If react, add suffix to username
+            if data.get("emoji", False):
+                user = user + " (REACTED)"
+                msg = data.get("emoji", "?")
+                group = "$msg"
+            else:
+                # Message deleted notification
+                group = "$deleted"
+
+        # Check for new message
+        elif data.get("message", False):
+            # New Message, group or DM
+            msg = data.get("message", "?")
+
+            # If edited, add suffix to username
+            if data.get("targetSentTimestamp", False):
+                user = user + " (EDITED)"
+
+
+            group = "$msg"
+
+            if data.get("groupId", False):
+                # Group message, use its name
+                group = MessageFetcher.group_mapping.get(data.get("groupId","?"))[-1]
+
+        else:
+            # Unknown
+            group = "$unknown"
+
+
+        # Now initialize object with all values used.
+        return Message(timestamp, group, user, msg, data)
+
 
     def send_message(self, response, group_name):
         try:
@@ -135,41 +229,122 @@ class MessageFetcher:
             #return
             data = self.fetch_messages(self.message_url)
             if data:
-                messages = self.parse_messages(data)
-                for msg in messages:
+                prev = None # avoid dupes
+                for item in data:
+                    msg = self.parse(item)
+
+                    # Avoid dupes, sometimes happens
+                    if prev is not None and prev == msg: continue
+                    prev = msg
+
+                    print(msg)
                     try:
-                        if len(msg.message_text) < 3: continue
-                        if not "Lonely" in msg.group_name: continue
-                        print(msg)
-                        print("Generating response")
-                        response = bot.cumulative_ask(msg.message_text)
-                        print(f"Response: {response}")
-                        print(f"Sending Response...")
-                        self.send_message(response, msg.group_name)
+                        pass
+                        #if len(msg.message_text) < 3: continue
+                        #if not "Lonely" in msg.group_name: continue
+                        #print(msg)
+                        # print("Generating response")
+                        # response = bot.cumulative_ask(msg.message_text)
+                        # print(f"Response: {response}")
+                        # print(f"Sending Response...")
+                        #self.send_message(response, msg.group_name)
                     except: continue
             else:
                 # print("Failed to fetch messages or no messages found.")
                 pass
-            time.sleep(10)
+            time.sleep(1)
 
 class Message:
-    def __init__(self, source_name, message_text, timestamp, group_name):
-        self.source_name = source_name
-        self.message_text = message_text
+    def __init__(self, timestamp, group, user, msg, data):
         self.timestamp = timestamp
-        self.group_name = group_name
+        self.group = group
+        self.user = user
+        self.msg = msg
+        self.data = data
+
+        # Parse out from attributes the type of message
+        self.is_delivered = self.group == "$delivered"
+        self.is_read = self.group == "$read"
+        self.is_viewed = self.group == "$viewed"
+        self.is_typing = self.group == "$typing"
+        self.is_dm = self.group == "$msg"
+        self.is_deleted = self.group == "$deleted"
+        self.is_unknown = self.group == "$unknown"
+
+        # Otherwise is group message
+
+    def __eq__(self, other):
+        # If everything is the same but it came like a few seconds later (duplicate checking) then its equal.
+        return self.group == other.group and\
+               self.user == other.user and\
+               self.msg == other.msg and\
+               self.is_delivered == other.is_delivered and\
+               self.is_read == other.is_read and\
+               self.is_viewed == other.is_viewed and\
+               self.is_typing == other.is_typing and\
+               self.is_dm == other.is_dm and\
+               self.is_deleted == other.is_deleted and\
+               self.is_unknown == other.is_unknown
 
     def __str__(self):
+        """
+        Print out differently according to type of message
+        :return:
+        """
         # Constructing the color-coded message
         timestamp_color = Fore.YELLOW
         groupname_color = Fore.CYAN
         username_color = Fore.GREEN
+        flag_color = Fore.MAGENTA
+        deleted_color = Fore.RED
         message_color = Fore.WHITE
-        #return f"Group {self.group_name}, Name: {self.source_name}, Message: {self.message_text}, Timestamp: {self.timestamp}"
-        return (f"{timestamp_color}{self.timestamp} "
-                f"{groupname_color}{self.group_name} - "
-                f"{username_color}{self.source_name}: "
-                f"{message_color}{self.message_text}")
+        debug_color = Fore.RED
+        s = f"{timestamp_color}{self.timestamp} "
+
+        if self.is_delivered:
+            s += f"{username_color}{self.user}: {flag_color} Received Message"
+        elif self.is_read:
+            s += f"{username_color}{self.user}: {flag_color} Read Message"
+        elif self.is_viewed:
+            s += f"{username_color}{self.user}: {flag_color} Viewed Message"
+        elif self.is_typing:
+            s += f"{username_color}{self.user}: {flag_color} Typing Message"
+        elif self.is_deleted:
+            s += f"{username_color}{self.user}: {deleted_color} Deleted Message"
+        elif self.is_dm:
+            s += f"{username_color}{self.user}: {message_color}{self.msg}"
+        elif self.is_unknown:
+            s += f"{debug_color}UNKNOWN FORMAT: {message_color}{self.data}"
+        else: # group msg
+            s += f"{groupname_color}{self.group} - {username_color}{self.user}: {message_color}{self.msg}"
+
+        if DEBUG:
+            s += f" {debug_color}DEBUG: {self.data}"
+        return s
+
+
+# class Message:
+#     def __init__(self, source_name, message_text, timestamp, group_name, raw_msg):
+#         self.source_name = source_name
+#         self.message_text = message_text
+#         self.timestamp = timestamp
+#         self.group_name = group_name
+#         self.raw_msg = raw_msg
+#
+#     def __str__(self):
+#         #return f"Group {self.group_name}, Name: {self.source_name}, Message: {self.message_text}, Timestamp: {self.timestamp}"
+#         if self.group_name == "?" or len(self.message_text) < 5:
+#             # Output raw message, unknown format.
+#             return (f"{timestamp_color}{self.timestamp} "
+#                     f"{groupname_color}{self.group_name} - "
+#                     f"{username_color}{self.source_name}: "
+#                     f"{message_color}{self.raw_msg}")
+#
+#         else:
+#             return (f"{timestamp_color}{self.timestamp} "
+#                     f"{groupname_color}{self.group_name} - "
+#                     f"{username_color}{self.source_name}: "
+#                     f"{message_color}{self.message_text}")
 
 
 # Usage
