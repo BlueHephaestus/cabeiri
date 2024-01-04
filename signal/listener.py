@@ -53,15 +53,6 @@ class MessageFetcher:
         if group_data:
             MessageFetcher.group_mapping = self.create_group_mapping(group_data)
 
-    @staticmethod
-    def fetch_group_data(url):
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            print(f"Error: {e}")
-            return None
 
     @staticmethod
     def create_group_mapping(group_data):
@@ -72,35 +63,6 @@ class MessageFetcher:
             name = group.get('name', '')
             group_mapping.insert(id, internal_id, name)
         return group_mapping
-
-    @staticmethod
-    def fetch_messages(url):
-        try:
-            response = requests.get(url)
-            response.raise_for_status()
-            return response.json()
-        except requests.RequestException as e:
-            print(f"Error: {e}")
-            return None
-
-    def parse_messages(self, data):
-        READ_TEMPLATE = ["envelope", "receiptMessage","isRead"]
-
-        messages = []
-        for item in data:
-            envelope = item.get('envelope', {})
-            source_name = envelope.get('sourceName', '')
-            try:
-                group_internal_id = envelope.get('dataMessage', {}).get('groupInfo', {}).get('groupId', {})
-                group_name = MessageFetcher.group_mapping.get(group_internal_id)[-1]
-            except:
-                group_name = "?"
-            timestamp = envelope.get('timestamp', 0)
-            human_readable_timestamp = datetime.fromtimestamp(timestamp / 1000).strftime('%b %d, %I:%M%p')
-            message_text = envelope.get('dataMessage', {}).get('message', '')
-
-            messages.append(Message(source_name, message_text, human_readable_timestamp, group_name, item))
-        return messages
 
     """
     a 
@@ -254,78 +216,6 @@ class MessageFetcher:
                 # print("Failed to fetch messages or no messages found.")
                 pass
             time.sleep(1)
-
-class Message:
-    def __init__(self, timestamp, group, user, msg, data):
-        self.timestamp = timestamp
-        self.group = group
-        self.user = user
-        self.msg = msg
-        self.data = data
-
-        # Parse out from attributes the type of message
-        self.is_delivered = self.group == "$delivered"
-        self.is_read = self.group == "$read"
-        self.is_viewed = self.group == "$viewed"
-        self.is_typing = self.group == "$typing"
-        self.is_dm = self.group == "$msg"
-        self.is_deleted = self.group == "$deleted"
-        self.is_unknown = self.group == "$unknown"
-
-        # Otherwise is group message
-
-    def __eq__(self, other):
-        # If everything is the same but it came like a few seconds later (duplicate checking) then its equal.
-        return self.group == other.group and\
-               self.user == other.user and\
-               self.msg == other.msg and\
-               self.is_delivered == other.is_delivered and\
-               self.is_read == other.is_read and\
-               self.is_viewed == other.is_viewed and\
-               self.is_typing == other.is_typing and\
-               self.is_dm == other.is_dm and\
-               self.is_deleted == other.is_deleted and\
-               self.is_unknown == other.is_unknown
-
-    def print(self):
-        """
-        Print out differently according to type of message
-            don't print if certain flags are set.
-        :return:
-        """
-        # Constructing the color-coded message
-        timestamp_color = Fore.YELLOW
-        groupname_color = Fore.CYAN
-        username_color = Fore.GREEN
-        flag_color = Fore.MAGENTA
-        deleted_color = Fore.RED
-        message_color = Fore.WHITE
-        debug_color = Fore.RED
-        s = f"{timestamp_color}{self.timestamp} "
-
-        if self.is_delivered:
-            s += f"{username_color}{self.user}: {flag_color} Received Message"
-        elif self.is_read:
-            s += f"{username_color}{self.user}: {flag_color} Read Message"
-        elif self.is_viewed:
-            s += f"{username_color}{self.user}: {flag_color} Viewed Message"
-        elif self.is_typing:
-            s += f"{username_color}{self.user}: {flag_color} Typing Message"
-        elif self.is_deleted:
-            s += f"{username_color}{self.user}: {deleted_color} Deleted Message"
-        elif self.is_dm:
-            s += f"{username_color}{self.user}: {message_color}{self.msg}"
-        elif self.is_unknown:
-            s += f"{debug_color}UNKNOWN FORMAT: {message_color}{self.data}"
-        else: # group msg
-            s += f"{groupname_color}{self.group} - {username_color}{self.user}: {message_color}{self.msg}"
-
-        if DEBUG:
-            s += f" {debug_color}DEBUG: {self.data}"
-
-        if not RECEIPTS:
-            if self.is_delivered or self.is_read or self.is_viewed:
-                return
 
         print(s)
 
