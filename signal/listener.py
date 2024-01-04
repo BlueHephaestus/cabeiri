@@ -18,6 +18,7 @@ If asked for your name, tell them your name is Blue Hephaestus. Good luck, and h
 """
 SYSTEM_NUMBER = "+18647109821"
 DEBUG = False
+RECEIPTS = False
 
 class TripletStore:
     def __init__(self):
@@ -237,7 +238,7 @@ class MessageFetcher:
                     if prev is not None and prev == msg: continue
                     prev = msg
 
-                    print(msg)
+                    msg.print()
                     try:
                         pass
                         #if len(msg.message_text) < 3: continue
@@ -286,9 +287,10 @@ class Message:
                self.is_deleted == other.is_deleted and\
                self.is_unknown == other.is_unknown
 
-    def __str__(self):
+    def print(self):
         """
         Print out differently according to type of message
+            don't print if certain flags are set.
         :return:
         """
         # Constructing the color-coded message
@@ -320,7 +322,12 @@ class Message:
 
         if DEBUG:
             s += f" {debug_color}DEBUG: {self.data}"
-        return s
+
+        if not RECEIPTS:
+            if self.is_delivered or self.is_read or self.is_viewed:
+                return
+
+        print(s)
 
 
 # class Message:
@@ -353,3 +360,13 @@ message_url = f'http://127.0.0.1:8080/v1/receive/{SYSTEM_NUMBER}'
 message_fetcher = MessageFetcher(group_url, message_url)
 message_fetcher.main_loop()
 
+
+"""
+OI FUTURE SELF
+next steps are to use multiple messages for processing rather than individuals.
+this means simply keeping track of old messages in a structure, saving them to disk automatically,
+and then referencing them to get info when people make edits or deletes or reacts or other things.
+
+also need to do attachments at some point.
+
+"""
