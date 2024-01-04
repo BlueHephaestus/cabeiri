@@ -1,7 +1,7 @@
 import requests
 from parsers import *
 from Message import Message
-import time
+import asyncio
 
 SYSTEM_NUMBER = "+18647109821"
 GROUP_URL = f'http://127.0.0.1:8080/v1/groups/{SYSTEM_NUMBER}'
@@ -31,7 +31,7 @@ class Signal:
             print(f"Error: {e}")
             return None
 
-    def run(self, interval):
+    async def run(self, interval, callback):
         # Initialize the group mapping
         # TODO make this async and return to host program each message after parsing.
         print("Initializing Signal bot...")
@@ -41,6 +41,6 @@ class Signal:
                 for item in data:
                     msg = Message(self, platform="signal")
                     msg.parse(item)
-                    msg.print()
-            time.sleep(interval)
+                    await callback(msg)
+            await asyncio.sleep(interval)
 
