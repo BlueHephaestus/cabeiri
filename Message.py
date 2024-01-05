@@ -23,6 +23,9 @@ Unified message class for all platforms, so that it can be parsed and stored her
 import typing
 import json
 from colorama import Fore, Style, init
+from telethon.utils import get_display_name
+import asyncio
+import threading
 
 from parsers import *
 DEBUG = False
@@ -61,12 +64,15 @@ class Message:
 
         # Otherwise is group message
 
-    def parse(self, data):
+    async def parse(self, data):
         """
         Parse out based on platform, populate this message class with the data.
         """
         if self.platform == "signal":
             self.parse_signal(data)
+
+        elif self.platform == "telegram":
+            await self.parse_telegram(data)
 
     def parse_signal(self, data):
         """
@@ -93,7 +99,7 @@ class Message:
            8. Typing Notification
         """
         # pretty print json data for debugging
-        print(json.dumps(data, indent=4, sort_keys=True))
+        # print(json.dumps(data, indent=4, sort_keys=True))
         if data.get("isDelivery",False):
             # Message delivered notification
             self.type = "delivery"
@@ -139,6 +145,51 @@ class Message:
             #group = "$unknown"
             pass
 
+    async def parse_telegram(self, data):
+        """
+        Parse out the data from telegram message into this class's attributes
+            so much easier than signal, oh my god.
+        """
+        """
+        event.chat_id (or event.id)
+        event.message.date.timestamp()
+        event.message.date.convert(usual)
+        "telegram"
+        event.chat.title
+        event.chat.username
+        ??
+        event.message.media
+        event.message.message
+
+        """
+        self.id = data.chat_id
+        # Get datetime object in this timezone
+        date = to_local_timezone(data.message.date)
+        self.unix_timestamp = date.timestamp()
+        # self.human_timestamp = to_human_timestamp(self.unix_timestamp)
+        self.human_timestamp = date.strftime(STRFTIME_FMT)
+        self.platform = "telegram"
+
+        if data.is_group or data.is_channel or data.is_private:
+            self.type = "group"
+            #self.group = asyncio.run(data.get_chat()).title
+            # Try to get from object, otherwise lookup
+            if hasattr(data.chat, "title"):
+                self.group = data.chat.title
+            else:
+                self.group = self.bot.group_mapping.get(data.chat_id, "?")
+            # self.group = self.run_async_in_thread(data.get_chat())
+        else:
+            self.type = "message"
+
+        if hasattr(data.message.sender, "username") and data.message.sender.username is not None:
+            self.sender = data.message.sender.username
+        else:
+            self.sender = self.bot.user_mapping.get(data.message.sender_id, "?")
+
+        self.attachments = data.message.media
+        self.msg = data.message.message
+
     def __eq__(self, other):
         # If everything is the same but it came like a few seconds later (duplicate checking) then its equal.
         return self == other
@@ -168,6 +219,16 @@ class Message:
         message_color = Fore.WHITE
         debug_color = Fore.RED
         s = f"{timestamp_color}{self.human_timestamp} "
+
+        if self.platform == "signal":
+            s += f"📡 "
+        elif self.platform == "telegram":
+            s += f"🐱 "
+        elif self.platform == "text":
+            s += f"☎ ️️"
+
+
+
 
         if self.type == "delivery":
             s += f"{username_color}{self.sender}: {flag_color} Received Message"

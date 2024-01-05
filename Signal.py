@@ -12,6 +12,7 @@ class Signal:
 
     def __init__(self):
         # Initialize by getting group info for our account.
+        print("Initializing Signal bot...")
         group_data = self.get_request_json(GROUP_URL)
         if group_data:
             self.group_mapping = TripletStore() # 3 way hashmap
@@ -34,13 +35,13 @@ class Signal:
     async def run(self, interval, callback):
         # Initialize the group mapping
         # TODO make this async and return to host program each message after parsing.
-        print("Initializing Signal bot...")
+        print("Signal Bot Initialized. Awaiting Messages...")
         while True:
             data = self.get_request_json(MESSAGE_URL)
             if data:
                 for item in data:
                     msg = Message(self, platform="signal")
-                    msg.parse(item)
+                    await msg.parse(item)
                     await callback(msg)
             await asyncio.sleep(interval)
 

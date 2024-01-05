@@ -1,6 +1,6 @@
 # Description: Contains helper functions for parsing data
-from datetime import datetime
-
+from datetime import datetime, timezone
+STRFTIME_FMT = "%b %d, %I:%M%p"
 def items_recursive(dic):
     for key, val in dic.items():
         if type(val) is dict:
@@ -14,7 +14,11 @@ def flatten_dict(dic):
     # return 1-d dict from multidimensional dict
     return {k: v for k, v in items_recursive(dic)}
 
-to_human_timestamp = lambda timestamp: datetime.fromtimestamp(timestamp / 1000).strftime('%b %d, %I:%M%p')
+to_human_timestamp = lambda timestamp: datetime.fromtimestamp(timestamp / 1000).strftime(STRFTIME_FMT)
+
+def to_local_timezone(utc_dt):
+    return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
+
 
 class TripletStore:
     def __init__(self):
